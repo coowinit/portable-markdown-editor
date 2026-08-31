@@ -209,7 +209,7 @@
     .workspace {
       min-height: 0;
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 1px minmax(0, 1fr);
+      grid-template-columns: minmax(0, 1fr) 9px minmax(0, 1fr);
       background: var(--surface);
     }
 
@@ -266,7 +266,37 @@
       tab-size: 2;
     }
 
-    .divider { background: var(--border); }
+    .divider {
+      position: relative;
+      cursor: col-resize;
+      touch-action: none;
+      background: transparent;
+      outline: 0;
+    }
+
+    .divider::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 50%;
+      width: 1px;
+      transform: translateX(-50%);
+      background: var(--border);
+      transition: width .15s ease, background .15s ease;
+    }
+
+    .divider:hover::before,
+    .divider:focus-visible::before,
+    .divider.is-dragging::before {
+      width: 3px;
+      background: var(--accent);
+    }
+
+    body.is-resizing {
+      cursor: col-resize;
+      user-select: none;
+    }
 
     .preview-wrap {
       padding: 0 28px 80px;
@@ -323,12 +353,15 @@
 
     .markdown-body blockquote {
       margin-left: 0;
-      padding: .15em 1em;
-      border-left: 4px solid var(--border-strong);
+      padding: .35em 0 .35em 1em;
+      border-left: 3px solid var(--border-strong);
       color: var(--muted);
-      background: var(--surface-soft);
-      border-radius: 0 8px 8px 0;
+      background: transparent;
     }
+
+    .markdown-body blockquote > :first-child { margin-top: 0; }
+    .markdown-body blockquote > :last-child { margin-bottom: 0; }
+    .markdown-body blockquote p { margin: .25em 0; }
 
     .markdown-body code {
       padding: .15em .38em;
@@ -458,24 +491,9 @@
         grid-template-rows: var(--header-h) var(--tabs-h) var(--toolbar-h) 1fr;
       }
 
-      .topbar { padding: 0 10px; gap: 6px; }
-      .brand { flex: 0 1 122px; }
-      .brand strong {
-        max-width: 122px;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        font-size: 13px;
-      }
+      .topbar { padding: 0 12px; gap: 8px; }
       .brand span { display: none; }
       .save-status, .document-name { display: none; }
-      .top-actions { gap: 4px; }
-      .icon-btn {
-        height: 32px;
-        min-width: 32px;
-        padding: 0 7px;
-        white-space: nowrap;
-        font-size: 12px;
-      }
       .mobile-tabs { display: flex; }
       .format-toolbar { padding-inline: 8px; }
 
@@ -516,7 +534,7 @@
     <header class="topbar">
       <div class="brand">
         <strong>Portable Markdown Editor</strong>
-        <span>Phase 2 · Editing Layer · Local First</span>
+        <span>v1.0.0 · Zero Build · Local First</span>
       </div>
 
       <div class="topbar-spacer"></div>
@@ -570,7 +588,17 @@
         </div>
       </section>
 
-      <div class="divider" aria-hidden="true"></div>
+      <div
+        class="divider"
+        id="divider"
+        role="separator"
+        aria-label="拖动调整编辑区与预览区宽度"
+        aria-orientation="vertical"
+        aria-valuemin="24"
+        aria-valuemax="76"
+        aria-valuenow="50"
+        tabindex="0"
+      ></div>
 
       <section class="panel preview-panel" id="previewPanel" aria-label="Markdown 预览">
         <div class="panel-head">
@@ -601,25 +629,26 @@
       saveDelay: 450,
       historyDelay: 320,
       maxHistory: 100,
-      version: 'phase-2'
+      version: '1.0.0'
     });
 
     const DEFAULT_FILENAME = 'document.md';
 
     const DEFAULT_MARKDOWN = `# Portable Markdown Editor
 
-Phase 2 在第一阶段的稳定核心上加入了真正的编辑能力。
+一个轻量、可离线、零构建的 Markdown 编辑器。
 
-## 本阶段新增
+## v1.0.0 核心能力
 
+- Markdown 实时编辑与安全预览
 - 常用 Markdown 格式工具栏
 - Undo / Redo 与快捷键
-- 打开本地 \`.md\` / \`.markdown\` / \`.txt\`
-- 直接拖入 Markdown 文件
+- 打开或拖入本地 \`.md\` / \`.markdown\` / \`.txt\`
 - 下载当前内容为 \`.md\`
-- 文件名与正文一起自动保存在浏览器
+- 正文、文件名、主题与分栏比例自动保存在浏览器
+- 拖动中间分隔线调整编辑区与预览区比例
 
-> 仍然保持 Zero Build、Local First，并继续采用安全预览策略。
+> Zero Build · Local First · GitHub Pages Ready
 
 ### 快捷键
 
@@ -640,8 +669,7 @@ Phase 2 在第一阶段的稳定核心上加入了真正的编辑能力。
   margin: 0 auto;
 }
 \`\`\`
-
-下一阶段再加入 Mermaid、KaTeX 和更完整的导出能力。`;
+`;
 
     /* ============================================================
        02. State
@@ -650,7 +678,8 @@ Phase 2 在第一阶段的稳定核心上加入了真正的编辑能力。
       content: '',
       filename: DEFAULT_FILENAME,
       theme: 'light',
-      mobileMode: 'editor'
+      mobileMode: 'editor',
+      splitRatio: 50
     };
 
     /* ============================================================
@@ -661,6 +690,8 @@ Phase 2 在第一阶段的稳定核心上加入了真正的编辑能力。
       preview: document.getElementById('preview'),
       editorPanel: document.getElementById('editorPanel'),
       previewPanel: document.getElementById('previewPanel'),
+      workspace: document.querySelector('.workspace'),
+      divider: document.getElementById('divider'),
       saveStatus: document.getElementById('saveStatus'),
       charCount: document.getElementById('charCount'),
       documentName: document.getElementById('documentName'),
@@ -700,7 +731,8 @@ Phase 2 在第一阶段的稳定核心上加入了真正的编辑能力。
             version: CONFIG.version,
             content: state.content,
             filename: state.filename,
-            theme: state.theme
+            theme: state.theme,
+            splitRatio: state.splitRatio
           }));
           return true;
         } catch (error) {
@@ -873,6 +905,82 @@ Phase 2 在第一阶段的稳定核心上加入了真正的编辑能力。
        07. Mobile Layout
     ============================================================ */
     const Layout = (() => {
+      const MIN_SPLIT = 24;
+      const MAX_SPLIT = 76;
+      const KEYBOARD_STEP = 2;
+      let dragging = false;
+
+      function clampSplit(value) {
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) return 50;
+        return Math.min(MAX_SPLIT, Math.max(MIN_SPLIT, numeric));
+      }
+
+      function setSplitRatio(value, { persist = false } = {}) {
+        const ratio = Math.round(clampSplit(value) * 10) / 10;
+        state.splitRatio = ratio;
+        dom.workspace.style.gridTemplateColumns = `${ratio}fr 9px ${100 - ratio}fr`;
+        dom.divider.setAttribute('aria-valuenow', String(Math.round(ratio)));
+        dom.divider.setAttribute('aria-valuetext', `编辑区 ${Math.round(ratio)}%，预览区 ${Math.round(100 - ratio)}%`);
+        if (persist) Storage.save();
+      }
+
+      function ratioFromPointer(event) {
+        const rect = dom.workspace.getBoundingClientRect();
+        const dividerWidth = dom.divider.getBoundingClientRect().width || 9;
+        const usableWidth = Math.max(1, rect.width - dividerWidth);
+        const editorWidth = event.clientX - rect.left - dividerWidth / 2;
+        return (editorWidth / usableWidth) * 100;
+      }
+
+      function startResize(event) {
+        if (event.pointerType === 'mouse' && event.button !== 0) return;
+        if (window.matchMedia('(max-width: 760px)').matches) return;
+        dragging = true;
+        dom.divider.classList.add('is-dragging');
+        document.body.classList.add('is-resizing');
+        dom.divider.setPointerCapture?.(event.pointerId);
+        event.preventDefault();
+      }
+
+      function moveResize(event) {
+        if (!dragging) return;
+        setSplitRatio(ratioFromPointer(event));
+      }
+
+      function endResize(event) {
+        if (!dragging) return;
+        dragging = false;
+        dom.divider.classList.remove('is-dragging');
+        document.body.classList.remove('is-resizing');
+        if (dom.divider.hasPointerCapture?.(event.pointerId)) {
+          dom.divider.releasePointerCapture(event.pointerId);
+        }
+        Storage.save();
+      }
+
+      function handleDividerKeydown(event) {
+        let next = state.splitRatio;
+        const step = event.shiftKey ? 5 : KEYBOARD_STEP;
+
+        if (event.key === 'ArrowLeft') next -= step;
+        else if (event.key === 'ArrowRight') next += step;
+        else if (event.key === 'Home') next = MIN_SPLIT;
+        else if (event.key === 'End') next = MAX_SPLIT;
+        else return;
+
+        event.preventDefault();
+        setSplitRatio(next, { persist: true });
+      }
+
+      function bindSplitter() {
+        dom.divider.addEventListener('pointerdown', startResize);
+        dom.divider.addEventListener('pointermove', moveResize);
+        dom.divider.addEventListener('pointerup', endResize);
+        dom.divider.addEventListener('pointercancel', endResize);
+        dom.divider.addEventListener('keydown', handleDividerKeydown);
+      }
+
       function setMobileMode(mode) {
         state.mobileMode = mode === 'preview' ? 'preview' : 'editor';
         dom.editorPanel.classList.toggle('is-mobile-active', state.mobileMode === 'editor');
@@ -883,7 +991,7 @@ Phase 2 在第一阶段的稳定核心上加入了真正的编辑能力。
         });
       }
 
-      return { setMobileMode };
+      return { bindSplitter, setMobileMode, setSplitRatio };
     })();
 
     /* ============================================================
@@ -1321,6 +1429,7 @@ Phase 2 在第一阶段的稳定核心上加入了真正的编辑能力。
         const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
 
         Theme.apply(saved?.theme || (prefersDark ? 'dark' : 'light'));
+        Layout.setSplitRatio(saved?.splitRatio ?? 50);
         Editor.setFilename(typeof saved?.filename === 'string' ? saved.filename : DEFAULT_FILENAME);
         Editor.setContent(
           typeof saved?.content === 'string' ? saved.content : DEFAULT_MARKDOWN,
@@ -1343,6 +1452,7 @@ Phase 2 在第一阶段的稳定核心上加入了真正的编辑能力。
           if (!confirmed) return;
           Storage.reset();
           Editor.setFilename(DEFAULT_FILENAME);
+          Layout.setSplitRatio(50);
           Editor.setContent(DEFAULT_MARKDOWN, { immediate: true, resetHistory: true });
           Layout.setMobileMode('editor');
           dom.editor.focus();
@@ -1352,6 +1462,7 @@ Phase 2 在第一阶段的稳定核心上加入了真正的编辑能力。
       function init() {
         Editor.bind();
         Files.bind();
+        Layout.bindSplitter();
         restoreState();
         bindUi();
         History.updateButtons();
