@@ -580,7 +580,8 @@
 
       <div class="top-actions">
         <button class="icon-btn" id="openBtn" type="button" title="打开 Markdown 文件">打开</button>
-        <button class="icon-btn" id="downloadBtn" type="button" title="下载 Markdown 文件（Ctrl/Cmd + S）">下载</button>
+        <button class="icon-btn" id="downloadBtn" type="button" title="下载 Markdown 文件（Ctrl/Cmd + S）">下载 MD</button>
+        <button class="icon-btn" id="exportHtmlBtn" type="button" title="将右侧预览导出为独立 HTML 页面">导出 HTML</button>
         <button class="icon-btn" id="themeBtn" type="button" aria-label="切换深浅主题" title="切换主题">☾</button>
         <button class="icon-btn" id="resetBtn" type="button" aria-label="恢复示例内容" title="恢复示例">重置</button>
       </div>
@@ -737,6 +738,7 @@
       resetBtn: document.getElementById('resetBtn'),
       openBtn: document.getElementById('openBtn'),
       downloadBtn: document.getElementById('downloadBtn'),
+      exportHtmlBtn: document.getElementById('exportHtmlBtn'),
       undoBtn: document.getElementById('undoBtn'),
       redoBtn: document.getElementById('redoBtn'),
       fileInput: document.getElementById('fileInput'),
@@ -1411,6 +1413,68 @@
         dom.saveStatus.textContent = `已下载 ${filename}`;
       }
 
+
+      // Keep the exported document free of editor layout rules and external libraries.
+      const exportStyles = "    /* ============================================================\n       06. Markdown Content\n    ============================================================ */\n    .markdown-body {\n      font-size: 16px;\n      line-height: 1.75;\n      overflow-wrap: anywhere;\n    }\n\n    .markdown-body > :first-child { margin-top: 0; }\n    .markdown-body > :last-child { margin-bottom: 0; }\n\n    .markdown-body h1,\n    .markdown-body h2,\n    .markdown-body h3,\n    .markdown-body h4,\n    .markdown-body h5,\n    .markdown-body h6 {\n      line-height: 1.3;\n      margin: 1.7em 0 .7em;\n      color: var(--text);\n      font-weight: 700;\n    }\n\n    .markdown-body h1 { font-size: 2em; border-bottom: 1px solid var(--border); padding-bottom: .35em; }\n    .markdown-body h2 { font-size: 1.5em; border-bottom: 1px solid var(--border); padding-bottom: .3em; }\n    .markdown-body h3 { font-size: 1.25em; }\n    .markdown-body h4 { font-size: 1.08em; }\n    .markdown-body h5, .markdown-body h6 { font-size: 1em; }\n\n    .markdown-body p,\n    .markdown-body ul,\n    .markdown-body ol,\n    .markdown-body blockquote,\n    .markdown-body pre,\n    .markdown-body table { margin: 0 0 1.1em; }\n\n    .markdown-body ul,\n    .markdown-body ol { padding-left: 1.6em; }\n\n    .markdown-body li + li { margin-top: .28em; }\n\n    .markdown-body blockquote {\n      margin-left: 0;\n      padding: .35em 0 .35em 1em;\n      border-left: 3px solid var(--border-strong);\n      color: var(--muted);\n      background: transparent;\n    }\n\n    .markdown-body blockquote > :first-child { margin-top: 0; }\n    .markdown-body blockquote > :last-child { margin-bottom: 0; }\n    .markdown-body blockquote p { margin: .25em 0; }\n\n    .markdown-body code {\n      padding: .15em .38em;\n      border-radius: 5px;\n      background: var(--code-bg);\n      font-family: \"Cascadia Code\", \"SFMono-Regular\", Consolas, monospace;\n      font-size: .9em;\n    }\n\n    .markdown-body pre {\n      overflow: auto;\n      padding: 16px 18px;\n      border: 1px solid var(--border);\n      border-radius: 10px;\n      background: var(--code-bg);\n    }\n\n    .markdown-body pre code {\n      padding: 0;\n      background: transparent;\n      font-size: 13px;\n      line-height: 1.65;\n    }\n\n    .markdown-body a { color: var(--accent); text-decoration: none; }\n    .markdown-body a:hover { text-decoration: underline; }\n\n    .markdown-body img {\n      max-width: 100%;\n      height: auto;\n      border-radius: 9px;\n    }\n\n    .markdown-body hr {\n      height: 1px;\n      margin: 2em 0;\n      border: 0;\n      background: var(--border);\n    }\n\n    .markdown-body table {\n      width: 100%;\n      border-collapse: collapse;\n      display: block;\n      overflow-x: auto;\n    }\n\n    .markdown-body th,\n    .markdown-body td {\n      padding: 9px 12px;\n      border: 1px solid var(--border);\n      text-align: left;\n      white-space: nowrap;\n    }\n\n    .markdown-body th { background: var(--surface-soft); }\n\n    .markdown-body input[type=\"checkbox\"] {\n      margin-right: 6px;\n      vertical-align: -1px;\n    }\n\n    .empty-state, .error-state {\n      margin: 32px auto;\n      padding: 18px 20px;\n      border-radius: 10px;\n      color: var(--muted);\n      background: var(--surface-soft);\n      border: 1px solid var(--border);\n    }\n\n    .error-state { color: var(--danger); }\n\n";
+
+      function exportHtml() {
+        if (!window.marked || typeof window.marked.parse !== 'function') {
+          window.alert('Markdown 解析库未加载，无法导出 HTML。');
+          return;
+        }
+        // Reuse the already sanitized preview rather than interpreting raw Markdown again.
+        const previewHtml = dom.preview.innerHTML;
+        if (dom.preview.querySelector('.error-state')) {
+          window.alert('预览渲染失败，请先检查 Markdown 内容。');
+          return;
+        }
+        if (!state.content.trim()) {
+          window.alert('请先输入 Markdown 内容。');
+          return;
+        }
+
+        const filename = normalizeFilename(state.filename).replace(/\.(md|markdown|txt)$/i, '.html');
+        const title = filename.replace(/\.html$/i, '');
+        const escapedTitle = title.replace(/[&<>"']/g, (char) => ({
+          '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[char]));
+        const documentHtml = [
+          '<!doctype html>',
+          '<html lang="zh-CN">',
+          '<head>',
+          '  <meta charset="utf-8">',
+          '  <meta name="viewport" content="width=device-width, initial-scale=1">',
+          '  <title>' + escapedTitle + '</title>',
+          '  <style>',
+          '    :root { --surface: #fff; --surface-soft: #f8f9fb; --text: #20242a; --muted: #6f7782; --border: #dfe3e8; --border-strong: #cfd5dc; --accent: #2f6feb; --code-bg: #f4f6f8; --danger: #c5392f; }',
+          '    * { box-sizing: border-box; }',
+          '    html { background: #fff; }',
+          '    body { margin: 0; padding: 36px 24px 72px; color: var(--text); background: var(--surface); font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif; }',
+          '    .markdown-body { max-width: 860px; margin: 0 auto; }',
+          exportStyles,
+          '    @media (max-width: 640px) { body { padding: 22px 16px 48px; } .markdown-body { font-size: 16px; } }',
+          '  </style>',
+          '</head>',
+          '<body>',
+          '  <main class="markdown-body">',
+          previewHtml,
+          '  </main>',
+          '</body>',
+          '</html>'
+        ].join('\n');
+
+        const blob = new Blob([documentHtml], { type: 'text/html;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = filename;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 0);
+        dom.saveStatus.textContent = `已导出 ${filename}`;
+      }
+
       function showDrop() {
         dom.dropOverlay.classList.add('is-visible');
       }
@@ -1423,6 +1487,7 @@
       function bind() {
         dom.openBtn.addEventListener('click', openPicker);
         dom.downloadBtn.addEventListener('click', download);
+        dom.exportHtmlBtn.addEventListener('click', exportHtml);
         dom.fileInput.addEventListener('change', () => {
           const [file] = dom.fileInput.files || [];
           if (file) loadFile(file);
@@ -1455,7 +1520,7 @@
         });
       }
 
-      return { bind, download, loadFile };
+      return { bind, download, exportHtml, loadFile };
     })();
 
     /* ============================================================
